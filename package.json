@@ -1,0 +1,31 @@
+{
+  "name": "@zingle/redis-queue",
+  "version": "0.0.1",
+  "description": "async queue backed by Redis",
+  "main": "redis-queue.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "mocha"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/Zingle/node-redis-queue.git"
+  },
+  "author": "Richard Remer <reanjr@gmail.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Zingle/node-redis-queue/issues"
+  },
+  "homepage": "https://github.com/Zingle/node-redis-queue#readme",
+  "dependencies": {
+    "async-redis": "^1.1.7"
+  },
+  "devDependencies": {
+    "async-redis-mock": "^1.0.0",
+    "expect.js": "^0.3.1",
+    "mocha": "^8.3.0",
+    "sinon": "^9.2.4"
+  }
+}
