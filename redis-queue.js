@@ -8,6 +8,7 @@ const {randomBytes} = require("crypto");
  * @param {string} [options.dead_key]
  * @param {string} [options.recover_key]
  * @param {RedisClient|string|URL} [options.redis]
+ * @param {function} [options.retry]
  * @returns {RedisQueue}
  */
 function redisQueue({
@@ -73,8 +74,6 @@ function redisQueue({
             if (typeof value === "string") {
                 // call handler; retry with fresh copy of value each call
                 await retry(() => handleValue(JSON.parse(value)));
-            } else if (value === null) {
-                throw new Error("this is the problem");
             }
 
             // clean up transaction
