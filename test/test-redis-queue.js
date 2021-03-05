@@ -133,7 +133,8 @@ describe("RedisQueue#shift([function])", () => {
         });
 
         it("should recover data on next run after failure", async () => {
-            const value = "foo-bar";
+            const {stringify} = JSON;
+            const value = {foo: "bar"};
             let handler = sinon.spy();
 
             // initialize queue with single value
@@ -152,13 +153,18 @@ describe("RedisQueue#shift([function])", () => {
             // queue should now be empty because data is stored in transaction
             const emptyLength = await redis.llen(key);
 
+            // have to stub some stuff Redis mock doesn't handle
+            const tx = "uniquekey";
+            await redis.lpush(tx, stringify(value));
+            redis.sscan = (key, cursor) => [0, [tx]];
+
             // start worker B; should get value originally delivered to A
             const workerB = Queue({key, redis});
             await workerB.shift(handler);
 
             expect(emptyLength).to.be(0);
             expect(handler.calledOnce).to.be(true);
-            expect(handler.args[0][0]).to.be(value);
+            expect(stringify(handler.args[0][0])).to.be(stringify(value));
         });
     });
 });
