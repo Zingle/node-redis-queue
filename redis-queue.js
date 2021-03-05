@@ -1,6 +1,9 @@
 const Redis = require("async-redis");
 const {randomBytes} = require("crypto");
 
+const ONE_HOUR = 60*60;
+const ONE_MINUTE = 60;
+
 /**
  * Create asynchronous queue backed by Redis LISTs.
  * @param {object} options
@@ -9,6 +12,8 @@ const {randomBytes} = require("crypto");
  * @param {string} [options.recover_key]
  * @param {RedisClient|string|URL} [options.redis]
  * @param {function} [options.retry]
+ * @param {number} [options.timeout]
+ * @param {number} [options.recover_timeout]
  * @returns {RedisQueue}
  */
 function redisQueue({
@@ -18,6 +23,8 @@ function redisQueue({
     recover_key=`${key}${delim}tx`,
     redis=Redis.createClient(),
     retry=fn=>fn(),
+    timeout=ONE_HOUR,
+    recover_timeout=ONE_MINUTE,
 }) {
     if (!key) throw new Error("Redis queue requires key");
     if (redis instanceof URL) redis = String(redis);
@@ -55,9 +62,12 @@ function redisQueue({
 
         // need to execute in transaction; start with a transaction key
         const transaction_key = `${recover_key}${delim}${idgen()}`;
+        const lock_key = `${transaction_key}${delim}lock`;
 
         // record transaction for recovery
         await redis.sadd(recover_key, transaction_key);
+        await redis.set(lock_key, "locked");
+        await redis.expire(lock_key, timeout);
 
         // move next value into transaction (created as 1-elem LIST)
         // TODO: RPOPLPUSH can be replaced with LMOVE after Redis 6.2
@@ -77,6 +87,7 @@ function redisQueue({
             }
 
             // clean up transaction
+            await redis.del(lock_key);
             await redis.del(transaction_key);
             await redis.srem(recover_key, transaction_key);
 
@@ -99,15 +110,23 @@ function redisQueue({
      * Re-queue values which previously failed to process.
      */
     async function recover() {
-        if (recovered) return;
-
-        for await (const transaction_key of sscan(recover_key)) {
-            // cleanup transaction and move data back into queue
-            await redis.rpoplpush(transaction_key, key);
-            await redis.srem(recover_key, transaction_key);
+        if (recovered && recovered + recover_timeout*1000 >= Date.now()) {
+            return;
         }
 
-        recovered = true;
+        for await (const transaction_key of sscan(recover_key)) {
+            // lock key indicates if transaction is still active
+            const lock_key = `${transaction_key}${delim}lock`;
+            const locked = await redis.get(lock_key);
+
+            // if unlocked, cleanup transaction and move data back into queue
+            if (!locked) {
+                await redis.rpoplpush(transaction_key, key);
+                await redis.srem(recover_key, transaction_key);
+            }
+        }
+
+        recovered = Date.now();
     }
 
     /**
